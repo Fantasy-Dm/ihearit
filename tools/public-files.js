@@ -7,7 +7,7 @@ function publicFiles(root) {
   for (const [directory, names] of Object.entries(fixed)) for (const name of names) result.push(directory + '/' + name);
   for (const directory of ['lib', 'ui', 'tools', 'tests', '.github/workflows']) {
     for (const name of fs.readdirSync(path.join(root, directory))) {
-      if (name === 'update-local-install.js') continue;
+      if (['update-local-install.js', 'patch.js'].includes(name)) continue;
       if (directory === 'tests' ? name.endsWith('.test.js') : /\.(js|html|css|cs|ps1|json|yml)$/.test(name)) result.push(directory + '/' + name);
     }
   }

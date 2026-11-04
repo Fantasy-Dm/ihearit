@@ -16,6 +16,6 @@
 - `ihearit-v1.0.0-source.zip`：通用源码包；Windows 用户可运行 `setup-and-start.bat`，自动准备指定版本 Node.js、安装锁定依赖并启动。
 - `SHA256SUMS.txt`：上述文件的 SHA-256 校验值。
 
-通用版从空白样例库开始；原始录音、个人库、缓存、日志和个人完整版不在公开发布中。Kdenlive/FFmpeg 需要自行安装。
+通用版从空白样例库开始，不包含用户录音、工程、样例库、缓存或日志。Kdenlive/FFmpeg 需要自行安装。
 
 应用源码采用 MIT。YAMNet 模型采用 Apache-2.0，Node.js、ONNX Runtime 与其他第三方组件保留各自声明，详见随包 `THIRD_PARTY_NOTICES.md`。自动候选需要人工试听确认。
