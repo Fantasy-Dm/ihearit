@@ -8,7 +8,7 @@ const fixture = {version:'3.1.0-js',profile:{file:'D:/录音工具/data/profiles
 fixture.version = require('../package.json').version + '-js';
 fixture.profile.groups = Object.entries(fixture.profile.counts).map(([name,count],i)=>({id:'g'+i,name,count,role:i<3?'target':'exclude',mode:i===0?'mouth':'both'}));
 fixture.rows.forEach(r=>r.groupId=r.mode==='mouth'?'g0':'g1');
-const files = {'/':'index.html','/app.js':'app.js','/library.js':'library.js','/files.js':'files.js','/sampling.js':'sampling.js','/style.css':'style.css','/library.css':'library.css','/files.css':'files.css','/sampling.css':'sampling.css','/player.js':'player.js'};
+const files = {'/favicon.ico':'icons/icon.ico','/icon.svg':'icons/icon.svg','/icon-192.png':'icons/icon-192.png','/icon-512.png':'icons/icon-512.png','/manifest.webmanifest':'manifest.webmanifest','/':'index.html','/app.js':'app.js','/library.js':'library.js','/files.js':'files.js','/sampling.js':'sampling.js','/style.css':'style.css','/library.css':'library.css','/files.css':'files.css','/sampling.css':'sampling.css','/player.js':'player.js'};
 let previewRequests=0;
 let lastPreviewArgs=null;
 let draft=null, examples=[];
@@ -18,7 +18,7 @@ const detail=()=>({...fixture.profile,examples});
 const server = http.createServer(async(req,res)=>{
   const route=new URL(req.url,'http://localhost').pathname;
   if(route==='/api/live'){res.writeHead(200,{'Content-Type':'text/event-stream'});res.write('data: ready\n\n');return;}
-  if(req.method==='GET'&&files[route]){res.setHeader('Content-Type',route.endsWith('.css')?'text/css':route.endsWith('.js')?'application/javascript':'text/html; charset=utf-8');res.end(fs.readFileSync(path.join(root,'ui',files[route])));return;}
+  if(req.method==='GET'&&files[route]){res.setHeader('Content-Type',route.endsWith('.svg')?'image/svg+xml':route.endsWith('.ico')?'image/x-icon':route.endsWith('.png')?'image/png':route.endsWith('.webmanifest')?'application/manifest+json':route.endsWith('.css')?'text/css':route.endsWith('.js')?'application/javascript':'text/html; charset=utf-8');res.end(fs.readFileSync(path.join(root,'ui',files[route])));return;}
   let text='';for await(const part of req)text+=part;const request=JSON.parse(text||'{}');if(request.op==='preview')previewRequests++;res.setHeader('Content-Type','application/json');
   let result=fixture;
   if(request.op==='preview'){lastPreviewArgs=request.args;const a=request.args,start=a.start===undefined?Math.max(0,(fixture.rows.find(r=>r.id===a.id)?.time||1)-.45):Number(a.start),end=a.end===undefined?start+1.1:Number(a.end);result={audio:'UklGRg==',start,end,context:a.context||'track',sourceId:a.context?'cal-test':null};}

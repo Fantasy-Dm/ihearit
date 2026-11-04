@@ -38,6 +38,9 @@ test('headless local server rejects unauthorized and cross-origin requests',asyn
     assert.equal((await fetch(server.origin+'/api/status',{headers:{'X-Noise-Token':server.token,Origin:'https://other.example'}})).status,403);
     const response=await fetch(server.origin+'/api',{method:'POST',headers:{'Content-Type':'application/json','X-Noise-Token':server.token},body:JSON.stringify({op:'state'})});assert.equal(response.status,200);assert.equal((await response.json()).version,require('../package.json').version+'-js');
     const page=await fetch(server.origin+'/');assert(page.headers.get('content-security-policy').includes("script-src 'self'"));assert((await page.text()).includes('声音校准'));
+    const favicon=await fetch(server.origin+'/favicon.ico');assert.equal(favicon.status,200);assert(favicon.headers.get('content-type').includes('image/x-icon'));assert(Buffer.from(await favicon.arrayBuffer()).equals(fs.readFileSync(path.join(root,'ui/icons/icon.ico'))));
+    const svg=await fetch(server.origin+'/icon.svg');assert(svg.headers.get('content-type').includes('image/svg+xml'));
+    const manifest=await (await fetch(server.origin+'/manifest.webmanifest')).json();assert.equal(manifest.short_name,'听个响');for(const icon of manifest.icons){const asset=await fetch(server.origin+icon.src);assert.equal(asset.status,200);assert(asset.headers.get('content-type').includes('image/png'));}
   }finally{await server.close();}
 });
 test('launcher entry reuses existing session without opening browser',async()=>{

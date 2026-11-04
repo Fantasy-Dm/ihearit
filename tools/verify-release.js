@@ -2,6 +2,7 @@
 const fs = require('node:fs'), path = require('node:path'), os = require('node:os'), assert = require('node:assert/strict');
 const {unzip, hash} = require('../lib/util'), {publicFiles} = require('./public-files');
 const root = path.resolve(__dirname, '..'), dist = path.join(root, 'dist'), pkg = require('../package.json');
+const {verifyEmbeddedIcon, frames} = require('./icon-resources');
 const expectedHash = 'd3835ffbbd4a1bb3e777f0ca217b5007907f5171dd5d17c4236b95b2af8f908e';
 const allowedSource = new Set(publicFiles(root)), sums = [];
 for (const suffix of ['win-x64', 'source']) {
@@ -17,6 +18,10 @@ for (const suffix of ['win-x64', 'source']) {
     if (suffix === 'source' && !relative.startsWith('licenses/') && !relative.startsWith('models/')) assert(!/[\w.+-]+@(?:qq\.com|163\.com|126\.com|outlook\.com|gmail\.com)/i.test(data.toString('utf8')), 'Personal email in application source: ' + name);
   }
   assert.equal(hash(get('models/yamnet.onnx')), expectedHash);
+  assert.deepEqual(frames(get('ui/icons/icon.ico')).map(frame => frame.width), [16,20,24,32,40,48,64,128,256]);
+  const manifestIcons = JSON.parse(get('ui/manifest.webmanifest')).icons;
+  for (const icon of manifestIcons) assert(get('ui/icons/' + icon.src.slice(1)).length > 100);
+  assert(get('ui/index.html').toString().includes('href="/favicon.ico"'));
   assert(get('LICENSE').toString().includes('I Hear It contributors'));
   assert(get('licenses/ONNX-Runtime-LICENSE.txt').toString().includes('Microsoft'));
   assert(get('licenses/ONNX-Runtime-ThirdPartyNotices.txt').length > 10000);
@@ -29,6 +34,7 @@ for (const suffix of ['win-x64', 'source']) {
     assert.deepEqual(manifest.runtimePackages, ['@xmldom/xmldom', 'onnxruntime-common', 'onnxruntime-node']);
     assert(get('node_modules/@xmldom/xmldom/LICENSE').length > 500);
     assert(get('ihearit.exe').length > 1000);
+    verifyEmbeddedIcon(get('ihearit.exe'), get('ui/icons/icon.ico'));
     assert.deepEqual(Object.keys(files).filter(name => /^ihearit\/[^/]+\.exe$/i.test(name)), ['ihearit/ihearit.exe']);
   } else assert.equal(Object.keys(files).length, allowedSource.size);
   sums.push(`${hash(bytes)}  ${filename}`); console.log('Verified public release: ' + filename);

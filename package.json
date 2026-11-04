@@ -1,6 +1,6 @@
 {
   "name": "ihearit",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "I Hear It / 听个响｜你继续，俺在听。基于自定义声音样本的本地检索与分类，当前接入 Kdenlive。",
   "main": "server.js",
@@ -10,7 +10,8 @@
     "audit:deps": "npm ls --all --omit=dev",
     "build:win": "node tools/build.js",
     "build:source": "node tools/source.js",
-    "verify:release": "node tools/verify-release.js"
+    "verify:release": "node tools/verify-release.js",
+    "build:icons": "powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File tools/build-icons.ps1"
   },
   "engines": {
     "node": ">=22"

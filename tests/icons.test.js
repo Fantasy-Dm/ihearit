@@ -1,0 +1,7 @@
+'use strict';
+const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
+const {frames,verifyEmbeddedIcon}=require('../tools/icon-resources');
+const root=path.resolve(__dirname,'..');
+test('Windows icon includes real transparent PNG frames at all shell sizes',()=>{const entries=frames(fs.readFileSync(path.join(root,'ui/icons/icon.ico')));assert.deepEqual(entries.map(f=>f.width),[16,20,24,32,40,48,64,128,256]);for(const entry of entries){assert(entry.data.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])));assert.equal(entry.data.readUInt32BE(16),entry.width);assert.equal(entry.data.readUInt32BE(20),entry.height);assert.equal(entry.data[25],6,'PNG must have an alpha channel');}});
+test('compiled EXE embeds the approved icon instead of a default application icon',()=>{assert.equal(verifyEmbeddedIcon(fs.readFileSync(path.join(root,'ihearit.exe')),fs.readFileSync(path.join(root,'ui/icons/icon.ico'))).length,9);});
+test('browser manifest uses local icons with matching actual sizes',()=>{const manifest=JSON.parse(fs.readFileSync(path.join(root,'ui/manifest.webmanifest'),'utf8'));for(const icon of manifest.icons){assert(icon.src.startsWith('/')&&!icon.src.startsWith('//'));const data=fs.readFileSync(path.join(root,'ui/icons',icon.src.slice(1)));assert.equal(icon.sizes,`${data.readUInt32BE(16)}x${data.readUInt32BE(20)}`);}const html=fs.readFileSync(path.join(root,'ui/index.html'),'utf8');assert(html.includes('rel="manifest"'));assert(html.includes('rel="icon"'));});
