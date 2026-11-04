@@ -1,0 +1,48 @@
+'use strict';
+const {test, after} = require('node:test'), assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path');
+const {Features, rank, sample, rowClips} = require('../lib/engine');
+const {Profile} = require('../lib/profile');
+const {Audio, TrackAudio, wav, tools, run} = require('../lib/audio');
+const {Project} = require('../lib/project');
+const {Service} = require('../lib/service');
+const {start} = require('../server');
+const {unzip} = require('../lib/util');
+const {spawn} = require('node:child_process');
+const root = path.resolve(__dirname, '..'), tempBase = path.join(__dirname, '.tmp'); fs.mkdirSync(tempBase, {recursive:true}); const folder=fs.mkdtempSync(path.join(tempBase,'integration-'));
+after(()=>{assert(path.resolve(folder).startsWith(path.resolve(tempBase)+path.sep));fs.rmSync(folder,{recursive:true,force:true});});
+let modelPromise;const model=()=>modelPromise ||= Features.open(path.join(root,'models/yamnet.onnx'));
+function rawAudio() { const b=fs.readFileSync(path.join(__dirname,'fixtures/reference-audio.f32')),x=new Float32Array(b.buffer,b.byteOffset,b.length/4);return {duration:2,read:async(start,duration)=>{const out=new Float32Array(Math.round(duration*16000)),first=Math.round(start*16000),a=Math.max(0,first),b=Math.min(x.length,first+out.length);if(b>a)out.set(x.subarray(a,b),a-first);return out;},x}; }
+function projectFixture(name) {
+  const dir=path.join(folder,name);fs.mkdirSync(dir);const file=path.join(dir,'sample.kdenlive'),audio=path.join(dir,'voice.wav');fs.writeFileSync(audio,wav(rawAudio().x));
+  fs.writeFileSync(file,'<mlt><profile frame_rate_num="60" frame_rate_den="1"/><chain id="source"><property name="resource">voice.wav</property><property name="audio_index">0</property></chain><playlist id="p"><entry producer="source" in="0" out="119"/></playlist>\n <tractor id="a"><property name="kdenlive:audio_track">1</property><track producer="p"/></tractor><tractor id="seq"><property name="kdenlive:sequenceproperties.documentuuid">id</property><property name="kdenlive:sequenceproperties.guides">[]</property><track producer="a"/></tractor><playlist id="main_bin"><property name="kdenlive:docproperties.guidesCategories">[{"index":5,"comment":"标记6"}]</property></playlist></mlt>');return {dir,file,audio};
+}
+test('JavaScript feature extraction matches Python reference to 1e-6',async()=>{const features=await model(),audio=rawAudio(),gold=JSON.parse(fs.readFileSync(path.join(__dirname,'fixtures/reference-features.json')));for(const [mode,at]of[['mouth',.72],['respiratory',.8]]){const vector=await features[mode](audio,at);let maximum=0;for(let i=0;i<vector.length;i++)maximum=Math.max(maximum,Math.abs(vector[i]-gold[mode][i]));assert(maximum<1e-6,`${mode} maximum error ${maximum}`);}});
+test('positive/negative example matching and explicit review override',()=>{const vector=new Float32Array(1124);vector[0]=vector[60]=vector[100]=1;const row={id:'m',mode:'mouth',time:1,media_time:1,origin:'source',vector},profile=new Profile();profile.add({mode:'mouth',label:'啧嘴',vector,origin:'other',feature_time:1,marker_time:1});assert(rank([row],profile)[0].accepted);profile.add({mode:'mouth',label:'口水声',vector,origin:'other',feature_time:2,marker_time:2});assert(!rank([row],profile)[0].accepted);assert(rank([row],profile,{m:'啧嘴'})[0].confirmed);});
+test('real media decoding, personal calibration, scan, mark, cut and two undos',async()=>{
+  const f=projectFixture('workflow');const service=new Service(root,path.join(f.dir,'data'));const before=fs.readFileSync(f.file);await service.handle('openProject',{file:f.file});
+  await service.handle('newProfile',{name:'测试个人库',groups:[{id:'click',name:'啧嘴',role:'target',mode:'mouth'}]});await service.handle('calSource',{});await service.handle('calSave',{start:.6,end:.9,label:'啧嘴',scope:'自动'});assert.equal(service.profile.examples.length,1);
+  await service.handle('scan',{});const row=service.ranked.find(r=>r.mode==='mouth'&&r.accepted);assert(row,'expected calibrated transient candidate');
+  const preview=await service.handle('preview',{id:row.id});assert(Buffer.from(preview.audio,'base64').subarray(0,4).toString()==='RIFF');
+  await service.handle('mark',{id:row.id,label:'啧嘴',category:5});assert.equal(new Project(f.file).markers('seq').length,1);
+  const start=(Math.floor(row.time*60)-1)/60,end=(Math.floor(row.time*60)+2)/60;await service.handle('cut',{id:row.id,start,end});assert.equal(service.ranked.filter(r=>r.id===row.id).length,0);assert(service.audio.clips.every(c=>c.timeline_in===c.source_in));
+  await service.handle('undo',{});await service.handle('undo',{});assert(fs.readFileSync(f.file).equals(before));
+  await service.handle('newProfile',{name:'另一个人'});assert.deepEqual(service.reviews(),{});assert.equal(service.ranked.filter(r=>r.accepted).length,0);
+  const log=path.join(f.dir,'logs.zip');await service.handle('diagnostics',{file:log});const entries=unzip(fs.readFileSync(log));assert(entries['runtime.json']);assert(Object.keys(entries).some(n=>n.startsWith('performance/')));assert(!Object.keys(entries).some(n=>n.endsWith('.wav')));
+});
+test('force resampling refreshes decoder blocks, normal reads reuse them',async()=>{const f=projectFixture('decoder'),audio=await Audio.open(f.audio,0,path.join(f.dir,'cache'));const x=await audio.read(.6,.3);assert(x.some(n=>Math.abs(n)>.1));const file=path.join(audio.folder,'0.f32'),first=fs.statSync(file,{bigint:true}).mtimeNs;await audio.read(.7,.1);assert.equal(fs.statSync(file,{bigint:true}).mtimeNs,first);audio.refresh=new Set();await audio.read(.7,.1);assert(fs.statSync(file,{bigint:true}).mtimeNs>first);});
+test('multiple audio streams decode the selected stream',async()=>{const f=projectFixture('streams'),file=path.join(f.dir,'two.mkv'),ffmpeg=tools().ffmpeg;await run(ffmpeg,['-nostdin','-v','error','-f','lavfi','-i','sine=frequency=440:sample_rate=16000:duration=0.5','-f','lavfi','-i','sine=frequency=880:sample_rate=16000:duration=0.5','-map','0:a','-map','1:a','-c:a','pcm_s16le',file]);const audio=await Audio.open(file,1,path.join(f.dir,'cache')),x=await audio.read(.1,.2);let crossings=0;for(let i=1;i<x.length;i++)if(x[i-1]<0&&x[i]>=0)crossings++;assert(Math.abs(crossings/.2-880)<10);});
+test('sample bounds reject silence and gaps without saving examples',async()=>{const fake={duration:2,key:'x',path:'sample.wav',validate(){},read:async(_,n)=>new Float32Array(Math.round(n*16000))};await assert.rejects(()=>sample(fake,.1,.4,'啧嘴',{}),/无声/);await assert.rejects(()=>sample(fake,0,.001,'啧嘴',{}));});
+test('headless local server rejects unauthorized and cross-origin requests',async()=>{
+  const server=await start({open:false,data:path.join(folder,'server-data')});try{
+    assert.equal((await fetch(server.origin+'/api/status')).status,403);
+    assert.equal((await fetch(server.origin+'/api/status',{headers:{'X-Noise-Token':server.token,Origin:'https://other.example'}})).status,403);
+    const response=await fetch(server.origin+'/api',{method:'POST',headers:{'Content-Type':'application/json','X-Noise-Token':server.token},body:JSON.stringify({op:'state'})});assert.equal(response.status,200);assert.equal((await response.json()).version,require('../package.json').version+'-js');
+    const page=await fetch(server.origin+'/');assert(page.headers.get('content-security-policy').includes("script-src 'self'"));assert((await page.text()).includes('声音校准'));
+  }finally{await server.close();}
+});
+test('launcher entry reuses existing session without opening browser',async()=>{
+  const data=path.join(folder,'launcher-data'),child=spawn(process.execPath,[path.join(root,'server.js'),'--no-open'],{cwd:root,env:{...process.env,NOISE_DATA:data},windowsHide:true,stdio:['ignore','pipe','pipe']});
+  let output='';const url=await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('headless launch timed out')),7000);child.stdout.on('data',chunk=>{output+=chunk;const match=output.match(/http:\/\/127\.0\.0\.1:\d+\/#([a-f0-9]+)/);if(match){clearTimeout(timer);resolve(match[0]);}});child.on('error',reject);child.on('exit',code=>{if(!output.includes('http://')){clearTimeout(timer);reject(Error('launcher exited '+code));}});});
+  try{const parsed=new URL(url),token=parsed.hash.slice(1),origin=parsed.origin;const reused=await new Promise((resolve,reject)=>{const other=spawn(process.execPath,[path.join(root,'server.js'),'--no-open'],{cwd:root,env:{...process.env,NOISE_DATA:data},windowsHide:true,stdio:['ignore','pipe','pipe']});let out='';other.stdout.on('data',chunk=>out+=chunk);other.on('exit',code=>code===0?resolve(out):reject(Error('reuse failed')));other.on('error',reject);});assert(reused.includes('已在运行'));await fetch(origin+'/api',{method:'POST',headers:{'Content-Type':'application/json','X-Noise-Token':token},body:JSON.stringify({op:'shutdown'})});await new Promise(done=>child.exitCode!==null?done():child.on('exit',done));}finally{if(child.exitCode===null)child.kill();}
+});
+test('UI references only unique existing controls and local scripts',()=>{const html=fs.readFileSync(path.join(root,'ui/index.html'),'utf8'),script=['app.js','library.js','files.js','sampling.js'].map(p=>fs.readFileSync(path.join(root,'ui',p),'utf8')).join('\n'),all=[...html.matchAll(/id="([^"]+)"/g)].map(m=>m[1]),ids=new Set(all);assert.equal(ids.size,all.length,'duplicate control IDs');for(const match of script.matchAll(/\$\('([^']+)'\)/g))assert(ids.has(match[1]),'Missing control '+match[1]);assert(!/https?:\/\//.test(html));assert(!/on(click|load)=/.test(html));});

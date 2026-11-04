@@ -1,0 +1,44 @@
+name: Publish generic release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: windows-2022
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24.13.0'
+      - name: Check version tag
+        run: |
+          $version = node -p "require('./package.json').version"
+          if ($env:GITHUB_REF_NAME -ne "v$version") { throw 'Tag and application version do not match.' }
+      - name: Install locked dependencies
+        run: npm ci --ignore-scripts --omit=dev --no-audit --no-fund
+      - name: Prepare decoder
+        run: choco install ffmpeg --no-progress --yes
+      - name: Check and build generic packages
+        run: |
+          node tools/compile-launcher.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --test tests/*.test.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node tools/build.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node tools/source.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node tools/verify-release.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Publish verified public assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          $version = node -p "require('./package.json').version"
+          $assets = @("dist/ihearit-v$version-win-x64.zip", "dist/ihearit-v$version-source.zip", 'dist/SHA256SUMS.txt')
+          gh release create $env:GITHUB_REF_NAME @assets --verify-tag --title "听个响 · I Hear It $version" --notes-file RELEASE_NOTES.md
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

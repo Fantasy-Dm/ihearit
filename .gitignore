@@ -1,0 +1,15 @@
+node_modules/
+.npm-cache/
+data/
+dist/
+runtime/
+profiles/
+tests/.tmp/
+/*.exe
+*.log
+.env
+.env.*
+*.pem
+*.key
+*.pfx
+.noise-assistant-history*/

@@ -1,0 +1,32 @@
+{
+  "name": "ihearit",
+  "version": "1.0.0",
+  "private": true,
+  "description": "I Hear It / 听个响｜你继续，俺在听。基于自定义声音样本的本地检索与分类，当前接入 Kdenlive。",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test tests/*.test.js",
+    "audit:deps": "npm ls --all --omit=dev",
+    "build:win": "node tools/build.js",
+    "build:source": "node tools/source.js",
+    "verify:release": "node tools/verify-release.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@xmldom/xmldom": "0.9.12",
+    "onnxruntime-node": "1.31.1"
+  },
+  "license": "MIT",
+  "author": "I Hear It contributors",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Fantasy-Dm/ihearit.git"
+  },
+  "homepage": "https://github.com/Fantasy-Dm/ihearit#readme",
+  "bugs": {
+    "url": "https://github.com/Fantasy-Dm/ihearit/issues"
+  }
+}
